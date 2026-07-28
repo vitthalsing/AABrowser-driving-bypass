@@ -77,9 +77,21 @@ class CarBrowserActivity : CarActivity() {
         }
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
 
+        // Media keeps running even though the surface is offscreen from the OS'
+        // point of view; make sure timers are not throttled.
+        webView.resumeTimers()
+
         webView.webViewClient = object : WebViewClient() {
+            override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
+                super.onPageStarted(view, url, favicon)
+                view.evaluateJavascript(VISIBILITY_SPOOF_JS, null)
+            }
+
             override fun onPageFinished(view: WebView, url: String?) {
                 super.onPageFinished(view, url)
+                // Re-apply after the page's own scripts have run, in case they
+                // redefined the visibility properties.
+                view.evaluateJavascript(VISIBILITY_SPOOF_JS, null)
                 url?.let { BrowserPreferences.persistUrl(view.context.applicationContext, it) }
             }
         }
@@ -115,6 +127,8 @@ class CarBrowserActivity : CarActivity() {
 
     override fun onStart() {
         super.onStart()
+        webView.onResume()
+        webView.resumeTimers()
         ForegroundService.start(webView.context.applicationContext)
     }
 
@@ -131,5 +145,33 @@ class CarBrowserActivity : CarActivity() {
             webView.canGoBack() -> webView.goBack()
             else -> super.onBackPressed()
         }
+    }
+
+    private companion object {
+        /**
+         * Forces the Page Visibility API to always report the page as visible.
+         * Sites such as YouTube listen for `visibilitychange` / read
+         * `document.hidden` and pause playback when they think the tab is
+         * hidden — which the projection surface always looks like. Redefining
+         * the properties and swallowing the event keeps video playing.
+         */
+        const val VISIBILITY_SPOOF_JS = """
+            (function() {
+              try {
+                Object.defineProperty(document, 'hidden',
+                  { configurable: true, get: function() { return false; } });
+                Object.defineProperty(document, 'visibilityState',
+                  { configurable: true, get: function() { return 'visible'; } });
+                Object.defineProperty(document, 'webkitHidden',
+                  { configurable: true, get: function() { return false; } });
+                Object.defineProperty(document, 'webkitVisibilityState',
+                  { configurable: true, get: function() { return 'visible'; } });
+                document.addEventListener('visibilitychange',
+                  function(e) { e.stopImmediatePropagation(); }, true);
+                document.addEventListener('webkitvisibilitychange',
+                  function(e) { e.stopImmediatePropagation(); }, true);
+              } catch (e) {}
+            })();
+        """
     }
 }
