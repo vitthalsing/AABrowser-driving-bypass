@@ -13,9 +13,6 @@ import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.LayerDrawable
-import android.media.AudioAttributes
-import android.media.AudioFocusRequest
-import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -131,8 +128,6 @@ class MainActivity : AppCompatActivity() {
 
     // --- Driving restriction bypass ---
     private var wakeLock: PowerManager.WakeLock? = null
-    private var audioFocusRequest: AudioFocusRequest? = null
-    private var audioManager: AudioManager? = null
 
     override fun attachBaseContext(newBase: Context?) {
         if (newBase == null) {
@@ -155,8 +150,14 @@ class MainActivity : AppCompatActivity() {
         // Keep screen on while the app is active
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        // Acquire audio focus so OS does not reclaim audio during driving state changes
-        acquireAudioFocus()
+        // NOTE: We intentionally do NOT grab app-level audio focus here.
+        // Doing so (and re-requesting it on every loss) fights the WebView's
+        // own Chromium media audio-focus request: an unmuted <video> would
+        // acquire focus, the app would see the loss and re-grab it, and the OS
+        // would then pause the video (play-for-a-moment-then-pause). Muted
+        // video was unaffected only because it never requests focus. The
+        // WebView owns media audio focus; the JS silent-oscillator injected by
+        // configureWebView keeps it held across driving-state transitions.
 
         // Acquire WakeLock to keep CPU running during video playback
         acquireWakeLock()
@@ -218,62 +219,8 @@ class MainActivity : AppCompatActivity() {
         binding.webViewContainer.removeAllViews()
         browserTabs.clear()
         webView = null
-        releaseAudioFocus()
         releaseWakeLock()
         super.onDestroy()
-    }
-
-    /**
-     * Acquires audio focus with AUDIOFOCUS_GAIN so the OS treats this app
-     * as an active media session. This prevents CarUxRestrictions from
-     * reclaiming the audio pipeline when the car starts moving.
-     */
-    private fun acquireAudioFocus() {
-        val am = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
-        audioManager = am
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val attrs = AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_MEDIA)
-                .setContentType(AudioAttributes.CONTENT_TYPE_MOVIE)
-                .build()
-            val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-                .setAudioAttributes(attrs)
-                .setAcceptsDelayedFocusGain(false)
-                .setOnAudioFocusChangeListener { focusChange ->
-                    if (focusChange == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT ||
-                        focusChange == AudioManager.AUDIOFOCUS_LOSS) {
-                        // Re-request focus after brief loss (e.g. navigation prompt)
-                        acquireAudioFocus()
-                    }
-                }
-                .build()
-            audioFocusRequest = request
-            am.requestAudioFocus(request)
-        } else {
-            @Suppress("DEPRECATION")
-            am.requestAudioFocus(
-                { focusChange ->
-                    if (focusChange == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT ||
-                        focusChange == AudioManager.AUDIOFOCUS_LOSS) {
-                        acquireAudioFocus()
-                    }
-                },
-                AudioManager.STREAM_MUSIC,
-                AudioManager.AUDIOFOCUS_GAIN
-            )
-        }
-    }
-
-    private fun releaseAudioFocus() {
-        val am = audioManager ?: return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            audioFocusRequest?.let { am.abandonAudioFocusRequest(it) }
-        } else {
-            @Suppress("DEPRECATION")
-            am.abandonAudioFocus(null)
-        }
-        audioManager = null
-        audioFocusRequest = null
     }
 
     /**
