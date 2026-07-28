@@ -1,4 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <automotiveApp>
+    <!--
+        This is a projected Activity app (MainActivity is shown on the car
+        screen), NOT a MediaBrowserService app. Android Auto must be told the
+        app supports projection, otherwise it refuses to open the activity
+        while the car is moving ("can't be used while driving"). The activity's
+        distractionOptimized=true flag is only honoured once projection is
+        declared here.
+    -->
+    <uses name="projection" />
     <uses name="media" />
 </automotiveApp>
