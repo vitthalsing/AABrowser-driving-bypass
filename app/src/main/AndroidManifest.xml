@@ -6,12 +6,11 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="androidx.car.app.ACCESS_SURFACE" />
-    <uses-permission android:name="androidx.car.app.MAP_TEMPLATES" />
     <!-- Keep CPU alive during video playback -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <!-- Needed for persistent audio focus service -->
+    <!-- Keeps the app process alive while projected on the car display -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
     <application
         android:allowBackup="true"
@@ -27,14 +26,9 @@
         android:usesCleartextTraffic="true"
         android:theme="@style/Theme.AABrowser">
         <meta-data
-            android:name="distractionOptimized"
-            android:value="true" />
-        <meta-data
             android:name="android.max_aspect"
             android:value="4.0" />
-        <meta-data
-            android:name="androidx.car.app.minCarApiLevel"
-            android:value="7" />
+        <!-- Points Android Auto at automotive_app_desc.xml (projection + service). -->
         <meta-data
             android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc" />
@@ -51,28 +45,15 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.CAR_LAUNCHER" />
-                <category android:name="androidx.car.app.category.NAVIGATION" />
-                <category android:name="android.intent.category.APP_MAPS" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.CAR_LAUNCHER" />
-                <category android:name="androidx.car.app.category.NAVIGATION" />
-                <category android:name="android.intent.category.APP_MAPS" />
+                <category android:name="android.intent.category.BROWSABLE" />
 
                 <data android:scheme="http" />
                 <data android:scheme="https" />
             </intent-filter>
-            <layout
-                android:minWidth="1dp"
-                android:minHeight="1dp"
-                android:gravity="fill"
-                android:defaultWidth="800dp"
-                android:defaultHeight="480dp" />
-            <meta-data android:name="distractionOptimized" android:value="true" />
-            <meta-data android:name="android.max_aspect" android:value="5.0" />
         </activity>
 
         <activity
@@ -102,6 +83,29 @@
             android:name="com.google.android.gms.oss.licenses.OssLicensesMenuActivity"
             android:exported="false"
             android:theme="@style/Theme.AABrowser" />
+
+        <!--
+            Android Auto OEM-projection entry point. Android Auto discovers this
+            service via the CATEGORY_PROJECTION / CATEGORY_PROJECTION_OEM intent
+            filter and instantiates it to obtain CarBrowserActivity, which it
+            renders on the head unit. This channel is NOT subject to the
+            per-activity distraction lockout, so the browser works while driving.
+        -->
+        <service
+            android:name=".car.CarService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="com.google.android.gms.car.category.CATEGORY_PROJECTION" />
+                <category android:name="com.google.android.gms.car.category.CATEGORY_PROJECTION_OEM" />
+            </intent-filter>
+        </service>
+
+        <!-- Keeps the process alive (and audio/video playing) while projected. -->
+        <service
+            android:name=".car.ForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
 
     </application>
 

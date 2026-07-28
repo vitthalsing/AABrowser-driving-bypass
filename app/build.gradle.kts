@@ -100,6 +100,12 @@ tasks.withType<KotlinJvmCompile>().configureEach {
 }
 
 dependencies {
+    // Android Auto OEM projection SDK (private/unsupported, vendored as prebuilt
+    // .aar because the upstream jitpack source was taken down at Google's
+    // request). Provides com.google.android.apps.auto.sdk.* + android.support.car.*
+    // used by the projected browser surface in the .car package.
+    implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar"))))
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.ktx)

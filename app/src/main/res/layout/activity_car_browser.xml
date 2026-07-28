@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Layout hosted by the Android Auto OEM-projection surface (CarBrowserActivity).
+    CarActivity is not an android.content.Context, so the WebView must be
+    inflated from a layout (the SDK's LayoutInflater carries the correct car
+    context) rather than constructed programmatically.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/car_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/black">
+
+    <WebView
+        android:id="@+id/car_webview"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:overScrollMode="never" />
+
+</FrameLayout>

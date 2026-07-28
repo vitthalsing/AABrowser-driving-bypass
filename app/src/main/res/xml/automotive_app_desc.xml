@@ -1,13 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <automotiveApp>
     <!--
-        This is a projected Activity app (MainActivity is shown on the car
-        screen), NOT a MediaBrowserService app. Android Auto must be told the
-        app supports projection, otherwise it refuses to open the activity
-        while the car is moving ("can't be used while driving"). The activity's
-        distractionOptimized=true flag is only honoured once projection is
-        declared here.
+        Declares this app to Android Auto as an OEM-projection app. The
+        "projection" capability is what lets the SDK render CarBrowserActivity
+        (an arbitrary WebView surface) on the head unit, and "service" points
+        Android Auto at the CarActivityService (com.kododake.aabrowser.car.CarService).
+
+        This is the mechanism used by every working projected-WebView app
+        (Screen2Auto, WebViewAuto, reactmap-android). Unlike the
+        androidx.car.app NAVIGATION path, the projection channel is NOT subject
+        to Android Auto's per-activity distraction lockout, so the browser stays
+        usable while the car is moving.
     -->
     <uses name="projection" />
-    <uses name="media" />
+    <uses name="service" />
 </automotiveApp>

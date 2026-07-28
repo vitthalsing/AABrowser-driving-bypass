@@ -20,3 +20,18 @@
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
 -dontobfuscate
+
+# --- Android Auto OEM projection SDK (vendored prebuilt .aar) ---
+# These classes are instantiated reflectively by Android Auto / the SDK, so R8
+# must not strip them. The SDK is also compiled against the legacy
+# android.support.** APIs, which are not on our classpath; silence those warnings.
+-keep class com.google.android.apps.auto.sdk.** { *; }
+-keep class com.google.android.gms.car.** { *; }
+-keep class android.support.car.** { *; }
+
+# Our own projection entry points, referenced only from the manifest.
+-keep class com.kododake.aabrowser.car.** { *; }
+
+-dontwarn com.google.android.apps.auto.sdk.**
+-dontwarn com.google.android.gms.car.**
+-dontwarn android.support.**

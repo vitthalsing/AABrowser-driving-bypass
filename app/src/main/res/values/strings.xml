@@ -1,6 +1,12 @@
 <resources>
     <string name="app_name">AABrowser</string>
     <string name="app_credit">AABrowser — by Kododake</string>
+
+    <!-- Android Auto projected-browser foreground service -->
+    <string name="car_notification_channel_name">Car browser</string>
+    <string name="car_notification_channel_description">Keeps the browser running while projected on the car display.</string>
+    <string name="car_notification_title">AABrowser</string>
+    <string name="car_notification_text">Projecting on the car display</string>
     <string name="author_name">Kododake</string>
     <string name="menu_title">AABrowser</string>
     <string name="menu_close">Close</string>
