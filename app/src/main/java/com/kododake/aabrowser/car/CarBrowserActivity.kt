@@ -35,6 +35,7 @@ class CarBrowserActivity : CarActivity() {
 
     private lateinit var carRoot: FrameLayout
     private lateinit var webView: WebView
+    private var audioFocus: AudioFocusHelper? = null
 
     // Fullscreen (<video>) support
     private var customView: View? = null
@@ -50,6 +51,7 @@ class CarBrowserActivity : CarActivity() {
         carRoot = findViewById(R.id.car_root) as FrameLayout
         webView = findViewById(R.id.car_webview) as WebView
 
+        audioFocus = AudioFocusHelper(webView.context)
         configureWebView(webView)
 
         // Hide the projected chrome so the browser fills the head-unit screen.
@@ -127,6 +129,7 @@ class CarBrowserActivity : CarActivity() {
 
     override fun onStart() {
         super.onStart()
+        audioFocus?.acquire()
         webView.onResume()
         webView.resumeTimers()
         ForegroundService.start(webView.context.applicationContext)
@@ -135,6 +138,7 @@ class CarBrowserActivity : CarActivity() {
     override fun onStop() {
         // Deliberately do NOT call webView.onPause(): pausing here would stop
         // media playback, which defeats the purpose of the projection surface.
+        audioFocus?.release()
         ForegroundService.stop(webView.context.applicationContext)
         super.onStop()
     }
