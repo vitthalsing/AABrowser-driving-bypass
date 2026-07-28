@@ -41,6 +41,7 @@ class CarBrowserActivity : CarActivity() {
 
     private lateinit var carRoot: FrameLayout
     private lateinit var webView: WebView
+    private var keepAlive: CarMediaKeepAlive? = null
 
     // Fullscreen (<video>) support
     private var customView: View? = null
@@ -55,6 +56,8 @@ class CarBrowserActivity : CarActivity() {
 
         carRoot = findViewById(R.id.car_root) as FrameLayout
         webView = findViewById(R.id.car_webview) as WebView
+
+        keepAlive = CarMediaKeepAlive(webView.context)
 
         configureWebView(
             webView = webView,
@@ -106,6 +109,7 @@ class CarBrowserActivity : CarActivity() {
 
     override fun onStart() {
         super.onStart()
+        keepAlive?.acquire()
         webView.onResume()
         webView.resumeTimers()
         ForegroundService.start(webView.context.applicationContext)
@@ -114,6 +118,7 @@ class CarBrowserActivity : CarActivity() {
     override fun onStop() {
         // Deliberately do NOT call webView.onPause(): pausing here would stop
         // media playback, which defeats the purpose of the projection surface.
+        keepAlive?.release()
         ForegroundService.stop(webView.context.applicationContext)
         super.onStop()
     }
