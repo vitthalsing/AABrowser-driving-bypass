@@ -3,16 +3,15 @@ package com.kododake.aabrowser.car
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
-import android.webkit.CookieManager
 import android.webkit.WebChromeClient
-import android.webkit.WebSettings
 import android.webkit.WebView
-import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import androidx.annotation.Keep
 import com.google.android.apps.auto.sdk.CarActivity
 import com.kododake.aabrowser.R
 import com.kododake.aabrowser.data.BrowserPreferences
+import com.kododake.aabrowser.web.BrowserCallbacks
+import com.kododake.aabrowser.web.configureWebView
 
 /**
  * The projected browser surface shown on the head unit via the OEM projection
@@ -22,6 +21,13 @@ import com.kododake.aabrowser.data.BrowserPreferences
  * opens and stays usable while driving (i.e. is not covered by Android Auto's
  * grey distraction scrim). Tabs, the URL bar, settings and the rest of the
  * phone UI live in `MainActivity` and are not ported here yet.
+ *
+ * Crucially, the WebView is configured through the shared
+ * [com.kododake.aabrowser.web.configureWebView], so it inherits the app's
+ * proven media handling — including the VIDEO_PAUSE_GUARD_JS that suppresses
+ * system-driven pauses and holds audio focus via a silent Web Audio
+ * oscillator. Rolling a bespoke WebView here is what previously let video pause
+ * as soon as sound started.
  *
  * Notes on the SDK:
  *  - [CarActivity] is NOT an `android.content.Context`; obtain a real context
@@ -35,7 +41,6 @@ class CarBrowserActivity : CarActivity() {
 
     private lateinit var carRoot: FrameLayout
     private lateinit var webView: WebView
-    private var audioFocus: AudioFocusHelper? = null
 
     // Fullscreen (<video>) support
     private var customView: View? = null
@@ -51,8 +56,16 @@ class CarBrowserActivity : CarActivity() {
         carRoot = findViewById(R.id.car_root) as FrameLayout
         webView = findViewById(R.id.car_webview) as WebView
 
-        audioFocus = AudioFocusHelper(webView.context)
-        configureWebView(webView)
+        configureWebView(
+            webView = webView,
+            callbacks = BrowserCallbacks(
+                onUrlChange = { url ->
+                    BrowserPreferences.persistUrl(webView.context.applicationContext, url)
+                },
+                onEnterFullscreen = { view, callback -> enterFullscreen(view, callback) },
+                onExitFullscreen = { exitFullscreen() }
+            )
+        )
 
         // Hide the projected chrome so the browser fills the head-unit screen.
         runCatching {
@@ -65,71 +78,34 @@ class CarBrowserActivity : CarActivity() {
         webView.loadUrl(startUrl)
     }
 
-    @Suppress("SetJavaScriptEnabled")
-    private fun configureWebView(webView: WebView) {
-        webView.settings.apply {
-            javaScriptEnabled = true
-            domStorageEnabled = true
-            databaseEnabled = true
-            // Allow autoplay so video keeps rolling without a tap.
-            mediaPlaybackRequiresUserGesture = false
-            loadWithOverviewMode = true
-            useWideViewPort = true
-            cacheMode = WebSettings.LOAD_DEFAULT
+    private fun enterFullscreen(view: View, callback: WebChromeClient.CustomViewCallback) {
+        if (customView != null) {
+            callback.onCustomViewHidden()
+            return
         }
-        CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
+        customView = view
+        customViewCallback = callback
+        webView.visibility = View.GONE
+        carRoot.addView(
+            view,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+    }
 
-        // Media keeps running even though the surface is offscreen from the OS'
-        // point of view; make sure timers are not throttled.
-        webView.resumeTimers()
-
-        webView.webViewClient = object : WebViewClient() {
-            override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
-                super.onPageStarted(view, url, favicon)
-                view.evaluateJavascript(VISIBILITY_SPOOF_JS, null)
-            }
-
-            override fun onPageFinished(view: WebView, url: String?) {
-                super.onPageFinished(view, url)
-                // Re-apply after the page's own scripts have run, in case they
-                // redefined the visibility properties.
-                view.evaluateJavascript(VISIBILITY_SPOOF_JS, null)
-                url?.let { BrowserPreferences.persistUrl(view.context.applicationContext, it) }
-            }
-        }
-
-        webView.webChromeClient = object : WebChromeClient() {
-            override fun onShowCustomView(view: View, callback: CustomViewCallback) {
-                if (customView != null) {
-                    callback.onCustomViewHidden()
-                    return
-                }
-                customView = view
-                customViewCallback = callback
-                webView.visibility = View.GONE
-                carRoot.addView(
-                    view,
-                    FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
-                )
-            }
-
-            override fun onHideCustomView() {
-                val view = customView ?: return
-                carRoot.removeView(view)
-                customView = null
-                webView.visibility = View.VISIBLE
-                customViewCallback?.onCustomViewHidden()
-                customViewCallback = null
-            }
-        }
+    private fun exitFullscreen() {
+        val view = customView ?: return
+        carRoot.removeView(view)
+        customView = null
+        webView.visibility = View.VISIBLE
+        customViewCallback?.onCustomViewHidden()
+        customViewCallback = null
     }
 
     override fun onStart() {
         super.onStart()
-        audioFocus?.acquire()
         webView.onResume()
         webView.resumeTimers()
         ForegroundService.start(webView.context.applicationContext)
@@ -138,44 +114,15 @@ class CarBrowserActivity : CarActivity() {
     override fun onStop() {
         // Deliberately do NOT call webView.onPause(): pausing here would stop
         // media playback, which defeats the purpose of the projection surface.
-        audioFocus?.release()
         ForegroundService.stop(webView.context.applicationContext)
         super.onStop()
     }
 
     override fun onBackPressed() {
         when {
-            customView != null -> webView.webChromeClient?.onHideCustomView()
+            customView != null -> exitFullscreen()
             webView.canGoBack() -> webView.goBack()
             else -> super.onBackPressed()
         }
-    }
-
-    private companion object {
-        /**
-         * Forces the Page Visibility API to always report the page as visible.
-         * Sites such as YouTube listen for `visibilitychange` / read
-         * `document.hidden` and pause playback when they think the tab is
-         * hidden — which the projection surface always looks like. Redefining
-         * the properties and swallowing the event keeps video playing.
-         */
-        const val VISIBILITY_SPOOF_JS = """
-            (function() {
-              try {
-                Object.defineProperty(document, 'hidden',
-                  { configurable: true, get: function() { return false; } });
-                Object.defineProperty(document, 'visibilityState',
-                  { configurable: true, get: function() { return 'visible'; } });
-                Object.defineProperty(document, 'webkitHidden',
-                  { configurable: true, get: function() { return false; } });
-                Object.defineProperty(document, 'webkitVisibilityState',
-                  { configurable: true, get: function() { return 'visible'; } });
-                document.addEventListener('visibilitychange',
-                  function(e) { e.stopImmediatePropagation(); }, true);
-                document.addEventListener('webkitvisibilitychange',
-                  function(e) { e.stopImmediatePropagation(); }, true);
-              } catch (e) {}
-            })();
-        """
     }
 }
